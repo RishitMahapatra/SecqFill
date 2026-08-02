@@ -7,7 +7,10 @@ import os
 from contextlib import contextmanager
 
 import psycopg
+from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
+
+load_dotenv()
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://localhost:5432/secqfill"

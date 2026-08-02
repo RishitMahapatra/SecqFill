@@ -1,4 +1,4 @@
-import requests as re 
+import requests
 OLLAMA_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text"
 
@@ -8,7 +8,7 @@ def get_embedding(text: str) -> list[float]: #you pass a string and get a list o
     Ollama must be running locally (ollama serve, or it's already
     running in the background if you've used it before).
     """
-    response = re.post(
+    response = requests.post(
         OLLAMA_URL,
         json = {"model": EMBED_MODEL, "prompt":text},
     )
