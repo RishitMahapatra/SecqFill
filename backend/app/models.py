@@ -25,3 +25,22 @@ class AnswerOut(BaseModel):
     last_used_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+
+
+class MatchRequest(BaseModel):
+    question_text: str = Field(..., min_length=1, max_length=2000)
+
+
+class MatchCandidate(BaseModel):
+    id: UUID
+    question_text: str
+    answer_text: str
+    similarity: float
+
+
+class MatchResponse(BaseModel):
+    id: UUID
+    question_text: str
+    answer_text: str
+    similarity: float
+    candidates: list[MatchCandidate]
