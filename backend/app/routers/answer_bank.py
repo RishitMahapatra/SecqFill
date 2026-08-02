@@ -9,7 +9,7 @@ needing an embedding model wired up yet.
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
-
+from app.embeddings import get_embedding
 from app.database import get_db
 from app.models import AnswerCreate, AnswerOut, AnswerUpdate
 
@@ -18,15 +18,21 @@ router = APIRouter(prefix="/companies/{company_id}/answers", tags=["answer_bank"
 
 @router.post("", response_model=AnswerOut, status_code=201)
 def create_answer(company_id: UUID, payload: AnswerCreate):
+    # Embed the question text now, at write time — not later, on the fly,
+    # during matching. This means matching a questionnaire against
+    # thousands of stored answers is just a fast vector comparison,
+    # not thousands of live embedding calls.
+    embedding = get_embedding(payload.question_text)
+
     with get_db() as conn:
         row = conn.execute(
             """
-            INSERT INTO answer_bank (company_id, question_text, answer_text)
-            VALUES (%s, %s, %s)
+            INSERT INTO answer_bank (company_id, question_text, answer_text, embedding)
+            VALUES (%s, %s, %s, %s)
             RETURNING id, company_id, question_text, answer_text, source,
                       times_used, last_used_at, created_at, updated_at
             """,
-            (str(company_id), payload.question_text, payload.answer_text),
+            (str(company_id), payload.question_text, payload.answer_text, embedding),
         ).fetchone()
     return _row_to_answer(row)
 
@@ -54,7 +60,10 @@ def update_answer(company_id: UUID, answer_id: UUID, payload: AnswerUpdate):
     if payload.question_text is not None:
         fields.append("question_text = %s")
         values.append(payload.question_text)
-        fields.append("embedding = NULL")
+        # Question text changed — the old embedding no longer represents
+        # this row, so we regenerate it now instead of leaving it stale/null.
+        fields.append("embedding = %s")
+        values.append(get_embedding(payload.question_text))
     if payload.answer_text is not None:
         fields.append("answer_text = %s")
         values.append(payload.answer_text)
