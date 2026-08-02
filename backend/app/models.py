@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -43,4 +43,5 @@ class MatchResponse(BaseModel):
     question_text: str
     answer_text: str
     similarity: float
+    confidence: Literal["green", "yellow", "red"]
     candidates: list[MatchCandidate]
