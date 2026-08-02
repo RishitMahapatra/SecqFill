@@ -24,10 +24,10 @@ def match_question(company_id: UUID, payload: MatchRequest):
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT id, question_text, answer_text, embedding <=> %s AS distance
+            SELECT id, question_text, answer_text, embedding <=> %s::vector AS distance
             FROM answer_bank
             WHERE company_id = %s
-            ORDER BY embedding <=> %s
+            ORDER BY embedding <=> %s::vector
             LIMIT 3
             """,
             (embedding, str(company_id), embedding),
