@@ -39,9 +39,12 @@ class MatchCandidate(BaseModel):
 
 
 class MatchResponse(BaseModel):
-    id: UUID
-    question_text: str
-    answer_text: str
-    similarity: float
+    # Nullable: there is no top match when the company's answer bank is
+    # empty, but we still return a response (confidence "red") instead of
+    # a 404 in that case.
+    id: Optional[UUID]
+    question_text: Optional[str]
+    answer_text: Optional[str]
+    similarity: Optional[float]
     confidence: Literal["green", "yellow", "red"]
     candidates: list[MatchCandidate]

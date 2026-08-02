@@ -9,7 +9,7 @@ human verify it, or skip straight to writing a fresh answer.
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from app.database import get_db
 from app.embeddings import get_embedding
@@ -63,7 +63,17 @@ def match_question(company_id: UUID, payload: MatchRequest):
         ).fetchall()
 
     if not rows:
-        raise HTTPException(404, "No answers found for this company")
+        # Empty answer bank — no usable match, needs a human answer from
+        # scratch. Report that as a red-confidence response rather than a
+        # 404, since "no match yet" is an expected state, not an error.
+        return MatchResponse(
+            id=None,
+            question_text=None,
+            answer_text=None,
+            similarity=None,
+            confidence="red",
+            candidates=[],
+        )
 
     candidates = [
         MatchCandidate(
