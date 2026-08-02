@@ -48,3 +48,27 @@ class MatchResponse(BaseModel):
     similarity: Optional[float]
     confidence: Literal["green", "yellow", "red"]
     candidates: list[MatchCandidate]
+
+
+class QuestionnaireUploadResponse(BaseModel):
+    id: UUID
+    status: str
+    total_questions: int
+    green_count: int
+    yellow_count: int
+    red_count: int
+
+
+class QuestionnaireItemOut(BaseModel):
+    id: UUID
+    questionnaire_id: UUID
+    row_number: int
+    question_text: str
+    matched_answer_id: Optional[UUID]
+    confidence_score: Optional[float]
+    # status here is the confidence bucket ("green"/"yellow"/"red") once
+    # matching has run; "pending" only applies pre-matching, and we run
+    # matching synchronously inside the upload request today.
+    status: str
+    final_answer_text: Optional[str]
+    created_at: datetime

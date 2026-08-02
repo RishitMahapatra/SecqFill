@@ -46,21 +46,27 @@ def _bucket_confidence(candidates: list[MatchCandidate]) -> Literal["green", "ye
     return "green"
 
 
-@router.post("", response_model=MatchResponse)
-def match_question(company_id: UUID, payload: MatchRequest):
-    embedding = get_embedding(payload.question_text)
+def match_single_question(
+    company_id: UUID, question_text: str, conn
+) -> MatchResponse:
+    """
+    Core "embed → search answer_bank → bucket confidence" for one question.
+    Takes a live db connection so callers processing many questions in one
+    request (e.g. a full questionnaire upload) can share one connection
+    instead of opening/closing per question.
+    """
+    embedding = get_embedding(question_text)
 
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, question_text, answer_text, embedding <=> %s::vector AS distance
-            FROM answer_bank
-            WHERE company_id = %s
-            ORDER BY embedding <=> %s::vector
-            LIMIT 3
-            """,
-            (embedding, str(company_id), embedding),
-        ).fetchall()
+    rows = conn.execute(
+        """
+        SELECT id, question_text, answer_text, embedding <=> %s::vector AS distance
+        FROM answer_bank
+        WHERE company_id = %s
+        ORDER BY embedding <=> %s::vector
+        LIMIT 3
+        """,
+        (embedding, str(company_id), embedding),
+    ).fetchall()
 
     if not rows:
         # Empty answer bank — no usable match, needs a human answer from
@@ -94,3 +100,9 @@ def match_question(company_id: UUID, payload: MatchRequest):
         confidence=_bucket_confidence(candidates),
         candidates=candidates,
     )
+
+
+@router.post("", response_model=MatchResponse)
+def match_question(company_id: UUID, payload: MatchRequest):
+    with get_db() as conn:
+        return match_single_question(company_id, payload.question_text, conn)
