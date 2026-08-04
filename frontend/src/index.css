@@ -1,0 +1,267 @@
+:root {
+  --text: #3a3a3a;
+  --text-muted: #767676;
+  --bg: #ffffff;
+  --border: #e3e3e6;
+  --row-hover: #fafafa;
+  --green: #1e9e5a;
+  --green-bg: #e7f7ee;
+  --yellow: #b98900;
+  --yellow-bg: #fdf3d8;
+  --red: #d13b3b;
+  --red-bg: #fbe8e8;
+
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 32px 40px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.header-top h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.filename {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.summary-strip {
+  display: flex;
+  gap: 8px;
+}
+
+.summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f4f4f5;
+}
+
+.summary-pill::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.summary-pill.dot-green::before { background: var(--green); }
+.summary-pill.dot-yellow::before { background: var(--yellow); }
+.summary-pill.dot-red::before { background: var(--red); }
+
+.loader-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.loader-bar input {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  min-width: 220px;
+}
+
+.loader-bar button {
+  padding: 7px 16px;
+  border: 1px solid var(--text);
+  background: var(--text);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.loader-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.error-text {
+  color: var(--red);
+  font-size: 13px;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  padding: 32px 0;
+  text-align: center;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+tbody tr:hover {
+  background: var(--row-hover);
+}
+
+tbody tr.row-approved {
+  opacity: 0.55;
+}
+
+tbody tr.row-approved .col-question,
+tbody tr.row-approved .col-answer textarea {
+  text-decoration: line-through;
+}
+
+.col-id {
+  width: 48px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.col-question {
+  width: 30%;
+  min-width: 220px;
+}
+
+.col-answer {
+  width: 38%;
+  min-width: 260px;
+}
+
+.col-answer textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  resize: vertical;
+}
+
+.col-status {
+  width: 110px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.dot-green { background: var(--green); }
+.dot-yellow { background: var(--yellow); }
+.dot-red { background: var(--red); }
+
+.status-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.col-actions {
+  width: 110px;
+}
+
+.approve-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.approve-btn.approved {
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
