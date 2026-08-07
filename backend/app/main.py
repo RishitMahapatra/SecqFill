@@ -13,6 +13,10 @@ app.add_middleware(
     allow_origins=["http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
+    # Content-Disposition isn't on the default cross-origin safelist, so
+    # without this the frontend can't read the export's real filename from
+    # the response and would have to fall back to a generic one.
+    expose_headers=["Content-Disposition"],
 )
 
 app.include_router(answer_bank.router)

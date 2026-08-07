@@ -96,6 +96,41 @@ export default function App() {
     patchItem(item.id, { approved: !item.approved })
   }
 
+  const [exporting, setExporting] = useState(false)
+
+  async function exportQuestionnaire() {
+    setExporting(true)
+    setError(null)
+    try {
+      const res = await fetch(
+        `${API_BASE}/companies/${companyId.trim()}/questionnaires/${questionnaireId.trim()}/export`
+      )
+      if (!res.ok) {
+        throw new Error(`Export failed: ${res.status} ${res.statusText}`)
+      }
+      const blob = await res.blob()
+      // Content-Disposition carries the server's real filename (see
+      // main.py's CORS expose_headers) — fall back to a generic name if
+      // it's missing for any reason rather than failing the download.
+      const disposition = res.headers.get('Content-Disposition') || ''
+      const match = disposition.match(/filename="?([^";]+)"?/)
+      const filename = match ? match[1] : 'export'
+
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const counts = useMemo(() => {
     const c = { green: 0, yellow: 0, red: 0 }
     for (const item of items) {
@@ -142,6 +177,9 @@ export default function App() {
         />
         <button onClick={loadItems} disabled={loading}>
           {loading ? 'Loading…' : 'Load'}
+        </button>
+        <button onClick={exportQuestionnaire} disabled={!loaded || exporting}>
+          {exporting ? 'Exporting…' : 'Export'}
         </button>
         {error && <span className="error-text">{error}</span>}
       </section>
