@@ -1,15 +1,18 @@
 :root {
-  --text: #3a3a3a;
-  --text-muted: #767676;
-  --bg: #ffffff;
-  --border: #e3e3e6;
-  --row-hover: #fafafa;
-  --green: #1e9e5a;
-  --green-bg: #e7f7ee;
-  --yellow: #b98900;
-  --yellow-bg: #fdf3d8;
-  --red: #d13b3b;
-  --red-bg: #fbe8e8;
+  --bg: #18181b;
+  --surface: #232326;
+  --surface-hover: #28282c;
+  --text: #e4e4e7;
+  --text-muted: #a1a1aa;
+  --border: #2e2e33;
+  --focus: #60a5fa;
+
+  --green: #4ade80;
+  --green-bg: rgba(74, 222, 128, 0.14);
+  --yellow: #fbbf24;
+  --yellow-bg: rgba(251, 191, 36, 0.14);
+  --red: #f87171;
+  --red-bg: rgba(248, 113, 113, 0.14);
 
   font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
@@ -22,6 +25,7 @@
 
 body {
   margin: 0;
+  background: var(--bg);
 }
 
 #root {
@@ -54,6 +58,7 @@ body {
   font-size: 20px;
   font-weight: 600;
   margin: 0;
+  color: var(--text);
 }
 
 .filename {
@@ -74,7 +79,8 @@ body {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  background: #f4f4f5;
+  background: var(--surface);
+  color: var(--text);
 }
 
 .summary-pill::before {
@@ -101,17 +107,28 @@ body {
   border-radius: 6px;
   font-size: 13px;
   min-width: 220px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.loader-bar input:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
 }
 
 .loader-bar button {
   padding: 7px 16px;
-  border: 1px solid var(--text);
-  background: var(--text);
-  color: #fff;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.loader-bar button:hover:not(:disabled) {
+  background: var(--surface-hover);
 }
 
 .loader-bar button:disabled {
@@ -176,10 +193,11 @@ tbody td {
   padding: 10px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
+  color: var(--text);
 }
 
 tbody tr:hover {
-  background: var(--row-hover);
+  background: var(--surface-hover);
 }
 
 tbody tr.row-approved {
@@ -214,6 +232,13 @@ tbody tr.row-approved .col-answer textarea {
   padding: 6px 8px;
   font: inherit;
   resize: vertical;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.col-answer textarea:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
 }
 
 .save-hint {
@@ -257,10 +282,15 @@ tbody tr.row-approved .col-answer textarea {
 .approve-btn {
   padding: 5px 10px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
+  color: var(--text);
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.approve-btn:hover {
+  background: var(--surface-hover);
 }
 
 .approve-btn.approved {
