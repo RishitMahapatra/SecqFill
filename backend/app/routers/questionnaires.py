@@ -9,9 +9,15 @@ so a human can review them afterwards.
 """
 import os
 import tempfile
-from uuid import UUID
+from pathlib import Path
+from uuid import UUID, uuid4
 
+import openpyxl
+from docx import Document
+from docx.shared import Inches
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from app.database import get_db
 from app.models import (
@@ -31,6 +37,17 @@ router = APIRouter(
 
 SUPPORTED_EXTENSIONS = {".xlsx", ".docx"}
 
+# backend/app/routers/questionnaires.py -> backend/
+BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+QUESTIONNAIRE_STORAGE_DIR = BACKEND_ROOT / "storage" / "questionnaires"
+QUESTIONNAIRE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+EXPORT_COLUMN_TITLE = "SecQFill Answer"
+EXPORT_CONTENT_TYPES = {
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
 
 @router.post("", response_model=QuestionnaireUploadResponse, status_code=201)
 def upload_questionnaire(company_id: UUID, file: UploadFile = File(...)):
@@ -42,31 +59,37 @@ def upload_questionnaire(company_id: UUID, file: UploadFile = File(...)):
             f"Unsupported file type '{ext}'. Supported: .xlsx, .docx",
         )
 
-    # openpyxl/python-docx both want a real filesystem path, so spool
-    # the upload to a temp file and pass its path in.
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        tmp.write(file.file.read())
-        tmp_path = tmp.name
+    # Generated up front (rather than letting Postgres default it) so the
+    # file can be named after the questionnaire's id before the row exists.
+    questionnaire_id = uuid4()
+    stored_path = QUESTIONNAIRE_STORAGE_DIR / f"{questionnaire_id}{ext}"
+    stored_path.write_bytes(file.file.read())
+    # Relative to BACKEND_ROOT, not absolute — an absolute path would break
+    # the moment this runs on a different machine or deploy path.
+    relative_storage_path = str(stored_path.relative_to(BACKEND_ROOT))
 
-    try:
-        if ext == ".xlsx":
-            questions = extract_questions_from_xlsx(tmp_path)
-        else:
-            questions = extract_questions_from_docx(tmp_path)
-    finally:
-        os.unlink(tmp_path)
+    # The file now persists (needed for export later), so parsing reads
+    # directly from the saved copy instead of a separate temp file.
+    if ext == ".xlsx":
+        questions = extract_questions_from_xlsx(str(stored_path))
+    else:
+        questions = extract_questions_from_docx(str(stored_path))
 
     with get_db() as conn:
-        row = conn.execute(
+        conn.execute(
             """
             INSERT INTO questionnaires
-                (company_id, original_filename, file_type, status)
-            VALUES (%s, %s, %s, 'processing')
-            RETURNING id
+                (id, company_id, original_filename, file_type, status, storage_path)
+            VALUES (%s, %s, %s, %s, 'processing', %s)
             """,
-            (str(company_id), filename, ext.lstrip(".")),
-        ).fetchone()
-        questionnaire_id = row[0]
+            (
+                str(questionnaire_id),
+                str(company_id),
+                filename,
+                ext.lstrip("."),
+                relative_storage_path,
+            ),
+        )
 
         counts = {"green": 0, "yellow": 0, "red": 0}
         for q in questions:
@@ -258,6 +281,94 @@ def rematch_questionnaire(company_id: UUID, questionnaire_id: UUID):
         yellow_count=counts["yellow"],
         red_count=counts["red"],
     )
+
+
+@router.get("/{questionnaire_id}/export")
+def export_questionnaire(company_id: UUID, questionnaire_id: UUID):
+    """
+    Regenerate the original file with a "SecQFill Answer" column appended,
+    filled from each item's final_answer_text and aligned by row_number.
+    Every export is a fresh rebuild from current item data — no diffing
+    against a previous export, no detection of an existing answer column.
+    """
+    with get_db() as conn:
+        questionnaire_row = conn.execute(
+            """
+            SELECT original_filename, file_type, storage_path
+            FROM questionnaires
+            WHERE id = %s AND company_id = %s
+            """,
+            (str(questionnaire_id), str(company_id)),
+        ).fetchone()
+        if questionnaire_row is None:
+            raise HTTPException(404, "Questionnaire not found")
+
+        original_filename, file_type, storage_path = questionnaire_row
+
+        if not storage_path:
+            raise HTTPException(
+                404,
+                "No stored file for this questionnaire — it was uploaded "
+                "before file persistence was added and can't be exported.",
+            )
+
+        source_path = BACKEND_ROOT / storage_path
+        if not source_path.is_file():
+            raise HTTPException(404, "Stored file is missing on disk")
+
+        items = conn.execute(
+            """
+            SELECT row_number, final_answer_text
+            FROM questionnaire_items
+            WHERE questionnaire_id = %s
+            ORDER BY row_number
+            """,
+            (str(questionnaire_id),),
+        ).fetchall()
+
+    if file_type not in EXPORT_CONTENT_TYPES:
+        raise HTTPException(400, f"Unsupported file type '{file_type}' for export")
+
+    export_ext = f".{file_type}"
+    with tempfile.NamedTemporaryFile(suffix=export_ext, delete=False) as tmp:
+        export_path = Path(tmp.name)
+
+    if file_type == "xlsx":
+        _write_xlsx_export(source_path, items, export_path)
+    else:
+        _write_docx_export(source_path, items, export_path)
+
+    stem, dot_ext = os.path.splitext(original_filename)
+    download_name = f"{stem}_completed{dot_ext}"
+
+    return FileResponse(
+        path=export_path,
+        media_type=EXPORT_CONTENT_TYPES[file_type],
+        filename=download_name,
+        background=BackgroundTask(export_path.unlink, missing_ok=True),
+    )
+
+
+def _write_xlsx_export(source_path: Path, items, export_path: Path) -> None:
+    wb = openpyxl.load_workbook(source_path)
+    ws = wb.active
+    answer_col = ws.max_column + 1
+    ws.cell(row=1, column=answer_col, value=EXPORT_COLUMN_TITLE)
+    for row_number, final_answer_text in items:
+        ws.cell(row=row_number, column=answer_col, value=final_answer_text or "")
+    wb.save(export_path)
+
+
+def _write_docx_export(source_path: Path, items, export_path: Path) -> None:
+    doc = Document(source_path)
+    table = doc.tables[0]
+    answer_col = table.add_column(width=Inches(2))
+    answer_col.cells[0].text = EXPORT_COLUMN_TITLE
+    for row_number, final_answer_text in items:
+        row_idx = row_number - 1
+        if 0 <= row_idx < len(answer_col.cells):
+            answer_col.cells[row_idx].text = final_answer_text or ""
+    doc.save(export_path)
 
 
 def _row_to_item(row) -> QuestionnaireItemOut:
