@@ -55,6 +55,10 @@ CREATE TABLE questionnaire_items (
     confidence_score NUMERIC(4,3),
     status TEXT NOT NULL DEFAULT 'pending',
     final_answer_text TEXT,
+    -- True once a human has reviewed and approved this item. Rematching
+    -- (see db/migrations/0001_add_approved_to_questionnaire_items.sql)
+    -- skips items where this is true, so it doubles as "don't overwrite me."
+    approved BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

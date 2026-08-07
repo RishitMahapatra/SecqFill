@@ -19,13 +19,13 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
 
   const [filter, setFilter] = useState('all')
-  // Local-only edits to the extracted answer, keyed by item id. Not
-  // persisted anywhere — there is no PATCH endpoint for questionnaire_items
-  // yet, so this is UI-state-only until that exists.
-  const [edits, setEdits] = useState({})
-  // Local-only "approved" toggle, keyed by item id. Same caveat as above:
-  // nothing is written back to the backend.
-  const [approved, setApproved] = useState({})
+  // Draft text for the answer textarea, keyed by item id — lets the field
+  // be responsive while typing without re-fetching. Saved via PATCH on
+  // blur; item.final_answer_text (from the server) is the source of truth
+  // once loaded/saved.
+  const [drafts, setDrafts] = useState({})
+  // Per-item save status ("saving" | "error"), purely for UI feedback.
+  const [saveState, setSaveState] = useState({})
 
   async function loadItems() {
     if (!companyId.trim() || !questionnaireId.trim()) {
@@ -43,8 +43,8 @@ export default function App() {
       }
       const data = await res.json()
       setItems(data)
-      setEdits({})
-      setApproved({})
+      setDrafts({})
+      setSaveState({})
       setLoaded(true)
     } catch (err) {
       setError(err.message)
@@ -53,6 +53,47 @@ export default function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Persists a partial update to one item via PATCH, then replaces that
+  // item in local state with the server's returned row — the server
+  // response (not an optimistic guess) becomes the new source of truth.
+  async function patchItem(itemId, payload) {
+    setSaveState((prev) => ({ ...prev, [itemId]: 'saving' }))
+    try {
+      const res = await fetch(
+        `${API_BASE}/companies/${companyId.trim()}/questionnaires/${questionnaireId.trim()}/items/${itemId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      )
+      if (!res.ok) {
+        throw new Error(`Save failed: ${res.status} ${res.statusText}`)
+      }
+      const updated = await res.json()
+      setItems((prev) => prev.map((it) => (it.id === itemId ? updated : it)))
+      setSaveState((prev) => {
+        const next = { ...prev }
+        delete next[itemId]
+        return next
+      })
+    } catch {
+      // Scoped out: no rollback of the draft/approved UI on failure, just
+      // surface that the save didn't go through.
+      setSaveState((prev) => ({ ...prev, [itemId]: 'error' }))
+    }
+  }
+
+  function handleAnswerBlur(item) {
+    const draft = drafts[item.id]
+    if (draft === undefined || draft === item.final_answer_text) return
+    patchItem(item.id, { final_answer_text: draft })
+  }
+
+  function toggleApprove(item) {
+    patchItem(item.id, { approved: !item.approved })
   }
 
   const counts = useMemo(() => {
@@ -68,7 +109,7 @@ export default function App() {
     return items.filter((item) => item.status === filter)
   }, [items, filter])
 
-  const approvedCount = Object.values(approved).filter(Boolean).length
+  const approvedCount = items.filter((item) => item.approved).length
 
   return (
     <div className="page">
@@ -137,8 +178,9 @@ export default function App() {
             </thead>
             <tbody>
               {filteredItems.map((item) => {
-                const isApproved = !!approved[item.id]
-                const answerValue = edits[item.id] ?? item.final_answer_text ?? ''
+                const isApproved = !!item.approved
+                const answerValue = drafts[item.id] ?? item.final_answer_text ?? ''
+                const status = saveState[item.id]
                 const pct =
                   item.confidence_score != null
                     ? Math.round(item.confidence_score * 100)
@@ -151,10 +193,13 @@ export default function App() {
                       <textarea
                         value={answerValue}
                         onChange={(e) =>
-                          setEdits((prev) => ({ ...prev, [item.id]: e.target.value }))
+                          setDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))
                         }
+                        onBlur={() => handleAnswerBlur(item)}
                         rows={2}
                       />
+                      {status === 'saving' && <div className="save-hint">Saving…</div>}
+                      {status === 'error' && <div className="save-hint save-error">Save failed</div>}
                     </td>
                     <td className="col-status">
                       <span className={`dot dot-${item.status}`} />
@@ -164,10 +209,8 @@ export default function App() {
                     <td className="col-actions">
                       <button
                         className={isApproved ? 'approve-btn approved' : 'approve-btn'}
-                        onClick={() =>
-                          setApproved((prev) => ({ ...prev, [item.id]: !prev[item.id] }))
-                        }
-                        title="Toggle approved (local only, not saved)"
+                        onClick={() => toggleApprove(item)}
+                        title="Toggle approved (saved to server)"
                       >
                         {isApproved ? '✓ Approved' : 'Approve'}
                       </button>
@@ -182,7 +225,7 @@ export default function App() {
 
       <footer className="footer">
         {loaded
-          ? `${items.length} questions · ${approvedCount} approved (not saved)`
+          ? `${items.length} questions · ${approvedCount} approved`
           : 'No questionnaire loaded'}
       </footer>
     </div>

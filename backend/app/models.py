@@ -71,4 +71,10 @@ class QuestionnaireItemOut(BaseModel):
     # matching synchronously inside the upload request today.
     status: str
     final_answer_text: Optional[str]
+    approved: bool
     created_at: datetime
+
+
+class QuestionnaireItemUpdate(BaseModel):
+    final_answer_text: Optional[str] = None
+    approved: Optional[bool] = None

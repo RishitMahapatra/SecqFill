@@ -216,6 +216,16 @@ tbody tr.row-approved .col-answer textarea {
   resize: vertical;
 }
 
+.save-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.save-hint.save-error {
+  color: var(--red);
+}
+
 .col-status {
   width: 110px;
   white-space: nowrap;
