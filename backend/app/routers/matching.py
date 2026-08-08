@@ -17,13 +17,31 @@ from app.models import MatchCandidate, MatchRequest, MatchResponse
 
 router = APIRouter(prefix="/companies/{company_id}/match", tags=["matching"])
 
-# Confidence bucketing thresholds — initial estimates, not final. Based on one
-# real example (nomic-embed-text), a correct match scored 0.541 while the
-# runner-up scored 0.380: absolute similarity for this model sits lower than
-# intuition suggests, so a fixed "0.8 = confident" cutoff would be wrong.
-# Expect to retune both constants once we've tested against more real data.
-MIN_SIMILARITY_THRESHOLD = 0.35  # below this, treat as no usable match at all
-CONFIDENT_GAP_THRESHOLD = 0.08   # gap over the runner-up needed to call it "green"
+# Confidence bucketing thresholds — still estimates, not final, but now
+# tuned against real observed data rather than a single example:
+#
+# MIN_SIMILARITY_THRESHOLD was 0.35, which real data showed doesn't separate
+# "genuine match" from "no match at all" for nomic-embed-text: a nonsense,
+# unrelated question ("What is your favorite pizza topping?") scored
+# 0.367-0.369 across its top 3 candidates — all above 0.35, so it was never
+# flagged red when it obviously should have been. Meanwhile, across a real
+# 142-question test set against 32 answers spanning 13 security categories,
+# the minimum score observed on a genuine match was 0.515. 0.42 sits between
+# the pizza-question ceiling (~0.37) and the real-match floor (~0.515), but
+# it's a starting estimate from two data points, not a final calibration —
+# expect to retune as more real data comes in.
+MIN_SIMILARITY_THRESHOLD = 0.42  # below this, treat as no usable match at all
+
+# CONFIDENT_GAP_THRESHOLD used to be an absolute difference (0.08), which
+# doesn't scale: as the answer bank grows with more topically-related
+# answers, the gap between a still-correct top match and its (now also
+# relevant) runner-up shrinks even though the top match hasn't gotten any
+# less correct — so green counts could paradoxically drop as the bank got
+# better. Using a relative gap (top - second) / top instead means the
+# threshold scales proportionally as absolute scores shift, rather than
+# needing a fixed subtraction to always mean the same thing. 0.15 is a
+# starting estimate, not a final value.
+CONFIDENT_RELATIVE_GAP_THRESHOLD = 0.15
 
 
 def _bucket_confidence(candidates: list[MatchCandidate]) -> Literal["green", "yellow", "red"]:
@@ -39,8 +57,8 @@ def _bucket_confidence(candidates: list[MatchCandidate]) -> Literal["green", "ye
         # threshold alone, which we already know is satisfied above.
         return "green"
 
-    gap = top_similarity - candidates[1].similarity
-    if gap < CONFIDENT_GAP_THRESHOLD:
+    relative_gap = (top_similarity - candidates[1].similarity) / top_similarity
+    if relative_gap < CONFIDENT_RELATIVE_GAP_THRESHOLD:
         return "yellow"
 
     return "green"
