@@ -14,7 +14,7 @@ import logging
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-JUDGE_MODEL = "llama3.2"
+JUDGE_MODEL = "mistral:7b"
 
 logger = logging.getLogger(__name__)
 
