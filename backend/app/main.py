@@ -16,7 +16,9 @@ app.add_middleware(
     # Content-Disposition isn't on the default cross-origin safelist, so
     # without this the frontend can't read the export's real filename from
     # the response and would have to fall back to a generic one.
-    expose_headers=["Content-Disposition"],
+    # X-Export-Warning carries the known-openpyxl-checkbox-limitation
+    # notice (see questionnaires.py) — same exposure problem, same fix.
+    expose_headers=["Content-Disposition", "X-Export-Warning"],
 )
 
 app.include_router(answer_bank.router)

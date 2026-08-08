@@ -52,6 +52,28 @@ EXPORT_CONTENT_TYPES = {
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
+# Known, documented openpyxl limitation (not a bug in our export logic):
+# openpyxl's data model doesn't include Excel's native in-cell checkbox
+# feature (a newer, proprietary Excel/Microsoft 365 feature backed by
+# "rich value" XML parts openpyxl doesn't read or write at all). Loading a
+# workbook and saving it back — which is what export does to append the
+# answer column — silently drops that formatting on any boolean cells that
+# used it; the underlying TRUE/FALSE values are unaffected, only the
+# checkbox rendering is lost, replaced by plain text. Confirmed as an open,
+# unresolved issue in openpyxl's own tracker:
+# https://foss.heptapod.net/openpyxl/openpyxl/-/issues/1148
+# There is no known openpyxl option, parameter, or newer version that
+# preserves this — it would require openpyxl to implement an entirely new
+# part of the OOXML spec it currently doesn't model at all. Surfaced to
+# the caller via the X-Export-Warning response header (see
+# export_questionnaire) rather than fixed silently or hacked around.
+XLSX_CHECKBOX_WARNING = (
+    "Native Excel checkbox formatting on boolean cells is not preserved by "
+    "this export (a known openpyxl limitation, not a bug in SecQFill's "
+    "export logic). The underlying values are correct, but any cells that "
+    "used Excel's checkbox rendering will appear as plain text instead."
+)
+
 
 @router.post("", response_model=QuestionnaireUploadResponse, status_code=201)
 def upload_questionnaire(company_id: UUID, file: UploadFile = File(...)):
@@ -364,10 +386,19 @@ def export_questionnaire(company_id: UUID, questionnaire_id: UUID):
     stem, dot_ext = os.path.splitext(original_filename)
     download_name = f"{stem}_completed{dot_ext}"
 
+    # xlsx round-trips through openpyxl lose native Excel checkbox
+    # formatting (see XLSX_CHECKBOX_WARNING above) — surface that via a
+    # response header so the frontend can show it, rather than silently
+    # handing back a file that renders differently with no explanation.
+    # docx exports don't go through this code path's checkbox risk, so no
+    # header there.
+    headers = {"X-Export-Warning": XLSX_CHECKBOX_WARNING} if file_type == "xlsx" else None
+
     return FileResponse(
         path=export_path,
         media_type=EXPORT_CONTENT_TYPES[file_type],
         filename=download_name,
+        headers=headers,
         background=BackgroundTask(export_path.unlink, missing_ok=True),
     )
 
@@ -379,6 +410,9 @@ def _write_xlsx_export(source_path: Path, items, export_path: Path) -> None:
     ws.cell(row=1, column=answer_col, value=EXPORT_COLUMN_TITLE)
     for row_number, final_answer_text in items:
         ws.cell(row=row_number, column=answer_col, value=final_answer_text or "")
+    # wb.save() here is exactly where the known openpyxl checkbox-formatting
+    # limitation bites — see XLSX_CHECKBOX_WARNING above for the full
+    # explanation and the upstream issue link. Nothing to fix on our side.
     wb.save(export_path)
 
 
