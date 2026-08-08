@@ -7,8 +7,10 @@ upload a file → extract questions → match every question → store one
 questionnaire_items row per question with its match + confidence bucket,
 so a human can review them afterwards.
 """
+import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -30,6 +32,8 @@ from app.parsing import (
     extract_questions_from_xlsx,
 )
 from app.routers.matching import match_single_question
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/companies/{company_id}/questionnaires", tags=["questionnaires"]
@@ -216,14 +220,23 @@ def update_questionnaire_item(
 @router.post(
     "/{questionnaire_id}/rematch", response_model=QuestionnaireUploadResponse
 )
-def rematch_questionnaire(company_id: UUID, questionnaire_id: UUID):
+def rematch_questionnaire(
+    company_id: UUID, questionnaire_id: UUID, use_llm_judge: bool = False
+):
     """
     Re-run matching for every item in an already-uploaded questionnaire.
     Lets a growing answer_bank fix items that were wrong at upload time
     without re-uploading the file. Approved items are left untouched —
     a human already signed off on those, so a fresh match shouldn't
     silently overwrite their decision.
+
+    use_llm_judge defaults to False, matching match_single_question()'s
+    own default — the LLM judge hasn't been performance-tested across a
+    full questionnaire yet. Passing it explicitly here lets it be timed
+    against real data before deciding whether to make it the default.
     """
+    start_time = time.monotonic()
+
     with get_db() as conn:
         questionnaire_row = conn.execute(
             "SELECT status FROM questionnaires WHERE id = %s AND company_id = %s",
@@ -250,7 +263,9 @@ def rematch_questionnaire(company_id: UUID, questionnaire_id: UUID):
                     counts[current_status] += 1
                 continue
 
-            match = match_single_question(company_id, question_text, conn)
+            match = match_single_question(
+                company_id, question_text, conn, use_llm_judge=use_llm_judge
+            )
             counts[match.confidence] += 1
 
             conn.execute(
@@ -272,6 +287,14 @@ def rematch_questionnaire(company_id: UUID, questionnaire_id: UUID):
                     str(item_id),
                 ),
             )
+
+    elapsed = time.monotonic() - start_time
+    logger.warning(
+        "Rematch completed: %d items in %.1fs, use_llm_judge=%s",
+        len(items),
+        elapsed,
+        use_llm_judge,
+    )
 
     return QuestionnaireUploadResponse(
         id=questionnaire_id,
