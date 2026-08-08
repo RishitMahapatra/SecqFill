@@ -6,6 +6,7 @@ via pgvector cosine distance, then bucket the result into a green/yellow/red
 confidence level so the caller knows whether to trust the match, have a
 human verify it, or skip straight to writing a fresh answer.
 """
+import logging
 from typing import Literal
 from uuid import UUID
 
@@ -13,7 +14,10 @@ from fastapi import APIRouter
 
 from app.database import get_db
 from app.embeddings import get_embedding
+from app.llm_judge import judge_relevance
 from app.models import MatchCandidate, MatchRequest, MatchResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/companies/{company_id}/match", tags=["matching"])
 
@@ -65,13 +69,18 @@ def _bucket_confidence(candidates: list[MatchCandidate]) -> Literal["green", "ye
 
 
 def match_single_question(
-    company_id: UUID, question_text: str, conn
+    company_id: UUID, question_text: str, conn, *, use_llm_judge: bool = False
 ) -> MatchResponse:
     """
     Core "embed → search answer_bank → bucket confidence" for one question.
     Takes a live db connection so callers processing many questions in one
     request (e.g. a full questionnaire upload) can share one connection
     instead of opening/closing per question.
+
+    use_llm_judge defaults to False so bulk callers (questionnaire upload,
+    /rematch) are unaffected by default — an LLM call per item hasn't been
+    performance-tested for a full questionnaire yet. Only the single-question
+    /match endpoint opts in below.
     """
     embedding = get_embedding(question_text)
 
@@ -110,12 +119,33 @@ def match_single_question(
     ]
 
     top = candidates[0]
+    confidence = _bucket_confidence(candidates)
+
+    # Only worth an LLM call if the embedding score didn't already reject
+    # the match — no point double-checking something already red, and this
+    # keeps latency to at most one LLM call per question. The similarity
+    # score itself is never touched here, only the confidence bucket: a
+    # judged-irrelevant top match still reports its real embedding score,
+    # just downgraded to red confidence.
+    if use_llm_judge and confidence != "red":
+        relevance = judge_relevance(question_text, top.answer_text)
+        if relevance is False:
+            confidence = "red"
+        elif relevance is None:
+            logger.warning(
+                "judge_relevance couldn't determine relevance for "
+                "question=%r; keeping embedding-based confidence=%r",
+                question_text,
+                confidence,
+            )
+        # relevance is True -> embedding-based confidence stands as-is.
+
     return MatchResponse(
         id=top.id,
         question_text=top.question_text,
         answer_text=top.answer_text,
         similarity=top.similarity,
-        confidence=_bucket_confidence(candidates),
+        confidence=confidence,
         candidates=candidates,
     )
 
@@ -123,4 +153,6 @@ def match_single_question(
 @router.post("", response_model=MatchResponse)
 def match_question(company_id: UUID, payload: MatchRequest):
     with get_db() as conn:
-        return match_single_question(company_id, payload.question_text, conn)
+        return match_single_question(
+            company_id, payload.question_text, conn, use_llm_judge=True
+        )
