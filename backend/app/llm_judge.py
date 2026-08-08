@@ -40,6 +40,11 @@ def judge_relevance(question_text: str, answer_text: str) -> bool | None:
     """
     prompt = _PROMPT_TEMPLATE.format(question=question_text, answer=answer_text)
 
+    # TEMPORARY DEBUG LOGGING — remove once the false-negative investigation
+    # (SSO/SAML question scored 0.983 similarity but got downgraded to red)
+    # is resolved. Not meant to stay in the codebase long-term.
+    logger.warning("judge_relevance DEBUG: prompt sent to Ollama:\n%s", prompt)
+
     try:
         response = requests.post(
             OLLAMA_URL,
@@ -51,11 +56,19 @@ def judge_relevance(question_text: str, answer_text: str) -> bool | None:
         logger.warning("judge_relevance: Ollama call failed", exc_info=True)
         return None
 
+    # TEMPORARY DEBUG LOGGING — see note above.
+    logger.warning("judge_relevance DEBUG: raw model response: %r", raw)
+
     normalized = raw.strip().lower()
     if normalized.startswith("yes"):
-        return True
-    if normalized.startswith("no"):
-        return False
+        result = True
+    elif normalized.startswith("no"):
+        result = False
+    else:
+        logger.warning("judge_relevance: could not parse model response: %r", raw)
+        result = None
 
-    logger.warning("judge_relevance: could not parse model response: %r", raw)
-    return None
+    # TEMPORARY DEBUG LOGGING — see note above.
+    logger.warning("judge_relevance DEBUG: parsed result: %r", result)
+
+    return result
